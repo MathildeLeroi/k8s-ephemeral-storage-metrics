@@ -51,6 +51,7 @@ var (
 	containerPercentageLimitsVec              *prometheus.GaugeVec
 	nodeSlice                                 []string
 	maxNodeConcurrency                        int
+	podResourceLookupMutex                    sync.RWMutex
 	podResourceLookup                         map[string]podContainers
 )
 
@@ -151,7 +152,10 @@ func getContainerRequestLimits(p v1.Pod) {
 		containers = append(containers, setContainer)
 	}
 
+	podResourceLookupMutex.Lock()
 	podResourceLookup[p.Name] = podContainers{containers: containers}
+	podResourceLookupMutex.Unlock()
+
 }
 
 func initGetPodsResourceLimits() {
@@ -297,7 +301,11 @@ func generateLabels(podName string, podNamespace string, nodeName string, usedBy
 	var labelsList []CollectMetric
 
 	if ephemeralStorageContainerLimitsPercentage {
+
+		podResourceLookupMutex.RLock()
 		podResult, ok := podResourceLookup[podName]
+		podResourceLookupMutex.RUnlock()
+
 		if ok {
 			for _, c := range podResult.containers {
 				labels := prometheus.Labels{"pod_namespace": podNamespace,
